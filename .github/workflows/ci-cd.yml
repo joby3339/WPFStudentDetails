@@ -1,12 +1,18 @@
-name: CI/CD Pipeline
+name: Production Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
   release:
     types: [ published ]
+  workflow_dispatch:
+    inputs:
+      deploy_to_production:
+        description: 'Deploy to production'
+        type: boolean
+        default: false
 
 env:
   DOTNET_VERSION: '8.0.x'
@@ -14,8 +20,9 @@ env:
   SOLUTION_PATH: './WPFStudentDetails.slnx'
 
 jobs:
-  build-and-test:
+  production-build-and-test:
     runs-on: windows-latest
+    environment: production
     
     steps:
     - name: Checkout code

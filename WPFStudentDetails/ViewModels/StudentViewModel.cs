@@ -16,7 +16,7 @@ namespace WPFStudentDetails.ViewModels
         {
             LoadStudents();
         }
-
+        // Loading student details from a JSON file
         private void LoadStudents()
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;

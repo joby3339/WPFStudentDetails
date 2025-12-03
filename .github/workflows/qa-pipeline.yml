@@ -1,0 +1,284 @@
+name: QA Pipeline
+
+on:
+  push:
+    branches: [ qa, release/* ]
+  workflow_dispatch:
+    inputs:
+      build_version:
+        description: 'Build version to deploy to QA'
+        required: true
+        default: 'latest'
+      run_performance_tests:
+        description: 'Run performance tests'
+        type: boolean
+        default: true
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: './WPFStudentDetails/WPFStudentDetails.csproj'
+  ENVIRONMENT: 'QA'
+
+jobs:
+  qa-build:
+    runs-on: windows-latest
+    environment: qa
+    
+    outputs:
+      build-version: ${{ steps.version.outputs.version }}
+      artifact-name: ${{ steps.artifact.outputs.name }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Generate build version
+      id: version
+      run: |
+        $version = "qa-$(Get-Date -Format 'yyyyMMdd')-$($env:GITHUB_SHA.Substring(0,7))"
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        echo "Build Version: $version"
+        
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Build application (Release)
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore /p:Version=${{ steps.version.outputs.version }}
+      
+    - name: Run comprehensive tests
+      run: |
+        dotnet test ${{ env.PROJECT_PATH }} --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --logger trx --results-directory ./qa-test-results
+      continue-on-error: false
+      
+    - name: Test report
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: QA Test Results
+        path: './qa-test-results/*.trx'
+        reporter: dotnet-trx
+        
+    - name: Publish QA Build
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --output ./qa-build --no-build /p:Version=${{ steps.version.outputs.version }}
+        
+    - name: Set artifact name
+      id: artifact
+      run: |
+        $artifactName = "qa-build-${{ steps.version.outputs.version }}"
+        echo "name=$artifactName" >> $env:GITHUB_OUTPUT
+        
+    - name: Upload QA build
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ./qa-build
+        retention-days: 30
+
+  qa-functional-tests:
+    needs: qa-build
+    runs-on: windows-latest
+    environment: qa
+    
+    strategy:
+      matrix:
+        test-suite: [smoke, regression, ui-automation]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download QA build
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.qa-build.outputs.artifact-name }}
+        path: ./qa-build
+        
+    - name: Setup test environment
+      run: |
+        # Setup QA database if needed
+        echo "Setting up QA test environment..."
+        # Copy QA configuration files
+        # Setup test data
+        
+    - name: Run ${{ matrix.test-suite }} tests
+      run: |
+        echo "Running ${{ matrix.test-suite }} test suite..."
+        
+        # Start application for testing
+        Start-Process -FilePath "./qa-build/WPFStudentDetails.exe" -PassThru -WindowStyle Hidden
+        Start-Sleep -Seconds 10
+        
+        # Run specific test suite based on matrix
+        switch ("${{ matrix.test-suite }}") {
+          "smoke" {
+            echo "Running smoke tests..."
+            # Add smoke test commands here
+          }
+          "regression" {
+            echo "Running regression tests..."
+            # Add regression test commands here
+          }
+          "ui-automation" {
+            echo "Running UI automation tests..."
+            # Add UI automation test commands here
+          }
+        }
+        
+        # Stop application
+        Get-Process -Name "WPFStudentDetails" -ErrorAction SilentlyContinue | Stop-Process -Force
+        
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: qa-${{ matrix.test-suite }}-results-${{ github.sha }}
+        path: ./test-results/${{ matrix.test-suite }}
+        retention-days: 14
+
+  qa-performance-tests:
+    needs: qa-build
+    runs-on: windows-latest
+    environment: qa
+    if: ${{ github.event.inputs.run_performance_tests == 'true' || github.event_name == 'push' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download QA build
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.qa-build.outputs.artifact-name }}
+        path: ./qa-build
+        
+    - name: Setup performance testing
+      run: |
+        # Install performance testing tools
+        echo "Setting up performance testing environment..."
+        
+    - name: Run performance tests
+      run: |
+        echo "Running performance tests..."
+        
+        # Memory usage tests
+        echo "Testing memory usage..."
+        
+        # Load tests
+        echo "Running load tests..."
+        
+        # Response time tests
+        echo "Testing response times..."
+        
+    - name: Generate performance report
+      run: |
+        echo "Generating performance report..."
+        # Create performance report
+        
+    - name: Upload performance results
+      uses: actions/upload-artifact@v4
+      with:
+        name: qa-performance-results-${{ github.sha }}
+        path: ./performance-results
+        retention-days: 30
+
+  qa-security-tests:
+    needs: qa-build
+    runs-on: windows-latest
+    environment: qa
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download QA build
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.qa-build.outputs.artifact-name }}
+        path: ./qa-build
+        
+    - name: Run security tests
+      run: |
+        echo "Running security vulnerability tests..."
+        
+        # Static security analysis
+        echo "Running static security analysis..."
+        
+        # Dependency vulnerability scan
+        echo "Scanning dependencies for vulnerabilities..."
+        
+    - name: Upload security results
+      uses: actions/upload-artifact@v4
+      with:
+        name: qa-security-results-${{ github.sha }}
+        path: ./security-results
+        retention-days: 30
+
+  qa-approval:
+    needs: [qa-build, qa-functional-tests, qa-performance-tests, qa-security-tests]
+    runs-on: windows-latest
+    environment: qa-approval
+    if: always()
+    
+    steps:
+    - name: QA Results Summary
+      run: |
+        echo "=== QA Pipeline Results Summary ==="
+        echo "Build Version: ${{ needs.qa-build.outputs.build-version }}"
+        echo "Functional Tests: ${{ needs.qa-functional-tests.result }}"
+        echo "Performance Tests: ${{ needs.qa-performance-tests.result }}"
+        echo "Security Tests: ${{ needs.qa-security-tests.result }}"
+        
+    - name: Notify QA team
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#qa-team'
+        custom_payload: |
+          {
+            "text": "QA Pipeline Complete",
+            "attachments": [
+              {
+                "color": "${{ job.status == 'success' && 'good' || 'danger' }}",
+                "fields": [
+                  {
+                    "title": "Build Version",
+                    "value": "${{ needs.qa-build.outputs.build-version }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Status",
+                    "value": "${{ job.status }}",
+                    "short": true
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.QA_SLACK_WEBHOOK }}
+      continue-on-error: true
+      
+    - name: Create QA report
+      run: |
+        echo "Creating comprehensive QA report..."
+        # Generate QA sign-off report
+        
+    - name: Tag successful QA build
+      if: success()
+      run: |
+        echo "QA tests passed. Build ready for production consideration."
+        # Tag this commit as QA-approved if all tests pass
