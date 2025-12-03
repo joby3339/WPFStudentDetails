@@ -1,0 +1,121 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: './WPFStudentDetails/WPFStudentDetails.csproj'
+  SOLUTION_PATH: './WPFStudentDetails.slnx'
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Build application
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+      
+    - name: Run tests (if any)
+      run: dotnet test ${{ env.PROJECT_PATH }} --configuration Release --no-build --verbosity normal
+      continue-on-error: true
+      
+    - name: Publish application
+      run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --output ./publish --no-build
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wpf-student-details-${{ github.sha }}
+        path: ./publish
+        retention-days: 30
+
+  create-release:
+    needs: build-and-test
+    runs-on: windows-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Publish for Windows x64
+      run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --runtime win-x64 --self-contained true --output ./release/win-x64
+      
+    - name: Publish for Windows x86
+      run: dotnet publish ${{ env.PROJECT_PATH }} --configuration Release --runtime win-x86 --self-contained true --output ./release/win-x86
+      
+    - name: Create ZIP archives
+      run: |
+        Compress-Archive -Path ./release/win-x64/* -DestinationPath ./WPFStudentDetails-win-x64.zip
+        Compress-Archive -Path ./release/win-x86/* -DestinationPath ./WPFStudentDetails-win-x86.zip
+        
+    - name: Upload release assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./WPFStudentDetails-win-x64.zip
+        asset_name: WPFStudentDetails-win-x64.zip
+        asset_content_type: application/zip
+        
+    - name: Upload x86 release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./WPFStudentDetails-win-x86.zip
+        asset_name: WPFStudentDetails-win-x86.zip
+        asset_content_type: application/zip
+
+  code-quality:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Run code analysis
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --verbosity normal
+      
+    - name: Install security analyzer
+      run: dotnet tool install --global security-scan
+      continue-on-error: true
+      
+    - name: Run security scan
+      run: security-scan ${{ env.PROJECT_PATH }}
+      continue-on-error: true
