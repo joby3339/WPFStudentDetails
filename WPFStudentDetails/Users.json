@@ -1,0 +1,23 @@
+[
+  {
+    "Username": "admin",
+    "Password": "admin123",
+    "Role": 0,
+    "FullName": "System Administrator",
+    "IsActive": true
+  },
+  {
+    "Username": "teacher",
+    "Password": "teach123",
+    "Role": 1,
+    "FullName": "John Teacher",
+    "IsActive": true
+  },
+  {
+    "Username": "student",
+    "Password": "stud123",
+    "Role": 2,
+    "FullName": "Jane Student",
+    "IsActive": true
+  }
+]
